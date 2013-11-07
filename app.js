@@ -5,14 +5,6 @@ var FS = require("q-io/fs");
 var Q = require("q");
 var _ = require('lodash');
 
-var readFromCacheAndRespond = function(fileName, res) {
-  return FS.read(fileName, "b")
-  .then(function (content) {
-    console.log("got content");
-    return res.end(content);
-  });
-};
-
 var dirExists = function(path, directoryToCheck) {
   var fullPath = path + "/" + directoryToCheck;
   console.log(fullPath);
@@ -26,11 +18,13 @@ var dirExists = function(path, directoryToCheck) {
 };
 
 var saveResponseToCache = function(error, response, body) {
+console.log("got response");
   var path = response.req.path.split('/');
-  var fileName = path.pop();
   console.log(response.req.path.split('/'));
   if(response.statusCode !== 200) { return Q.reject(error); }
-
+  if(response.req.path.indexOf("login") == -1) {
+    console.log(response);
+  }
   var availablePathPromise = _.reduce(_.reject(path, function(item) {
     return item === "";
   }), function(currentValue, dir) {
@@ -55,26 +49,37 @@ var saveResponseToCache = function(error, response, body) {
 };
 
 var readFromServerAndCache = function(req, res) {
-  var context = req.url;
-  var x = request('http://st-services.delta.com' + context, {headers: req.headers},saveResponseToCache);
+//  var context = "http://st-services.delta.com" + req.url;
+  var deferred = Q.defer();
+  var context = "http://localhost" + req.url;
+  console.log("Making request to " + context);
+  var x = request(context, {}, saveResponseToCache);
   req.pipe(x);
   x.pipe(res);
-  return x;
+  return deferred.promise;
+};
+
+var fetchFileFromCache = function(fileName) {
+  return FS.exists(fileName)
+    .then(function(exists) {
+      if(!exists) return Q.reject(fileName);
+      return FS.isFile(fileName);
+    })
+    .then(function(isValidFile) {
+      return (isValidFile) ? FS.read(fileName, "b") : Q.reject(fileName);
+    });
 };
 
 var proxyRequest = function(req, res){
   var context = req.url;
-  console.log(req.headers);
-  console.log("##################" + context + "#####################");
   var fileFromCache = __dirname + "/response" + context;
-  return FS.exists(fileFromCache)
-    .then(function(fileExists){
-      console.log(fileExists);
-      if(fileExists) {
-        console.log("read file");
-        return readFromCacheAndRespond(fileFromCache, res);
-      }
-      console.log("sending req");
+
+  return fetchFileFromCache(fileFromCache)
+    .then(function(responseBody) {
+      return res.end(responseBody);
+    })
+    .fail(function() {
+      console.log("Cache miss. Sending request");
       return readFromServerAndCache(req, res);
     });
 };
