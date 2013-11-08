@@ -7,7 +7,6 @@ var _ = require('lodash');
 
 var dirExists = function(path, directoryToCheck) {
   var fullPath = path + "/" + directoryToCheck;
-  console.log(fullPath);
   return FS.exists(fullPath)
     .then(function(exists) {
       if(!exists) return false;
@@ -17,14 +16,15 @@ var dirExists = function(path, directoryToCheck) {
     });
 };
 
+var nonEmptyValues = function(arr) {
+  return _.filter(arr, function(element) {
+    return element && element !== "";
+  });
+};
 var saveResponseToCache = function(error, response, body) {
-console.log("got response");
-  var path = response.req.path.split('/');
-  console.log(response.req.path.split('/'));
-  if(response.statusCode !== 200) { return Q.reject(error); }
-  if(response.req.path.indexOf("login") == -1) {
-    console.log(response);
-  }
+  console.log("got response");
+  var path = _.initial(response.req.path.split('/'));
+  if(response.statusCode !== 200 || response.req.path.indexOf("login") !== -1) { return Q.reject(error); }
   var availablePathPromise = _.reduce(_.reject(path, function(item) {
     return item === "";
   }), function(currentValue, dir) {
@@ -35,23 +35,24 @@ console.log("got response");
 
   return availablePathPromise.fail(function(existingPath) {
     console.log("in fail");
-    var lastDir = existingPath.split('/').pop(),
-        dirToBeCreated = path.splice(path.indexOf(lastDir) + 1);
-        console.log("____________" + existingPath + '___________');
-    return FS.makeDirectory(existingPath + "/" + dirToBeCreated[1])
+    var absolutePathToBeCreated = "/" + nonEmptyValues((__dirname + "/response/" + path.join("/")).split("/")).join("/");
+    var dirToBeCreated = nonEmptyValues(absolutePathToBeCreated.replace(existingPath, "").split("/"));
+    debugger;
+
+    console.log("____________" + existingPath + '___________');
+    return FS.makeDirectory(existingPath + "/" + _.head(dirToBeCreated))
     .then(function() {
-      return FS.makeTree(existingPath + dirToBeCreated.join('/'));
+      return FS.makeTree(existingPath + "/" + dirToBeCreated.join('/'));
     });
   })
   .then(function() {
-    return FS.write(__dirname + "/response" + response.req.path, body);
+    return FS.write(__dirname + "/response" + response.req.path + "_response", body);
   });
 };
 
 var readFromServerAndCache = function(req, res) {
-//  var context = "http://st-services.delta.com" + req.url;
+  var context = "http://st-services.delta.com" + req.url;
   var deferred = Q.defer();
-  var context = "http://localhost" + req.url;
   console.log("Making request to " + context);
   var x = request(context, {}, saveResponseToCache);
   req.pipe(x);
@@ -60,22 +61,27 @@ var readFromServerAndCache = function(req, res) {
 };
 
 var fetchFileFromCache = function(fileName) {
-  return FS.exists(fileName)
+  var cacheEntryName = fileName + "_response";
+
+  return FS.exists(cacheEntryName)
     .then(function(exists) {
       if(!exists) return Q.reject(fileName);
-      return FS.isFile(fileName);
+      return FS.isFile(cacheEntryName);
     })
     .then(function(isValidFile) {
-      return (isValidFile) ? FS.read(fileName, "b") : Q.reject(fileName);
+      return (isValidFile) ? FS.read(cacheEntryName, "b") : Q.reject(fileName);
     });
 };
 
 var proxyRequest = function(req, res){
   var context = req.url;
   var fileFromCache = __dirname + "/response" + context;
-
   return fetchFileFromCache(fileFromCache)
     .then(function(responseBody) {
+      console.log("Cache Hit");
+      if(fileFromCache.indexOf("json") !== -1) {
+        res.setHeader('Content-Type', 'application/json');
+      }
       return res.end(responseBody);
     })
     .fail(function() {
