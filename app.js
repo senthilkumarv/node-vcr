@@ -7,7 +7,7 @@ var _ = require('lodash');
 
 var proxy  = function(port, host, config) {
   var appConfig = _.defaults(config || {}, {
-    responseDirectory: __dirname
+    responseDirectory: "/tmp/response"
   });
 
   var dirExists = function(path, directoryToCheck) {
@@ -36,11 +36,11 @@ var proxy  = function(port, host, config) {
       return currentValue.then(function(currentPath) {
         return dirExists(currentPath, dir);
       });
-    }, Q.resolve(appConfig.responseDirectory + "/response"));
+    }, Q.resolve(appConfig.responseDirectory));
 
     return availablePathPromise.fail(function(existingPath) {
       console.log("in fail");
-      var absolutePathToBeCreated = "/" + nonEmptyValues((appConfig.responseDirectory + "/response/" + path.join("/")).split("/")).join("/");
+      var absolutePathToBeCreated = "/" + nonEmptyValues((appConfig.responseDirectory + path.join("/")).split("/")).join("/");
       var dirToBeCreated = nonEmptyValues(absolutePathToBeCreated.replace(existingPath, "").split("/"));
       console.log("____________" + existingPath + '___________');
       return FS.makeDirectory(existingPath + "/" + _.head(dirToBeCreated))
@@ -49,7 +49,7 @@ var proxy  = function(port, host, config) {
         });
     })
       .then(function() {
-        return FS.write(appConfig.responseDirectory + "/response" + response.req.path + "_response", body);
+        return FS.write(appConfig.responseDirectory + response.req.path + "_response", body);
       });
   };
 
@@ -78,7 +78,7 @@ var proxy  = function(port, host, config) {
 
   var proxyRequest = function(req, res){
     var context = req.url;
-    var fileFromCache = appConfig.responseDirectory + "/response" + context;
+    var fileFromCache = appConfig.responseDirectory + context;
     return fetchFileFromCache(fileFromCache)
       .then(function(responseBody) {
         console.log("Cache Hit");
@@ -100,5 +100,5 @@ var proxy  = function(port, host, config) {
   console.log(_.template('Listening on port ${ port } for host ${ host }!!!', {port: port, host: host}));
 };
 
-proxy(3000, "http://st-services.delta.com");
+proxy(3000, "https://si-services.delta.com");
 proxy(4000, "http://content.delta.com");
