@@ -27,7 +27,6 @@ var proxy  = function(port, host, config) {
     });
   };
   var saveResponseToCache = function(error, response, body) {
-    console.log("got response");
     var path = _.initial(response.req.path.split('/'));
     if(response.statusCode !== 200 || response.req.path.indexOf("login") !== -1) { return Q.reject(error); }
     var availablePathPromise = _.reduce(_.reject(path, function(item) {
@@ -53,13 +52,25 @@ var proxy  = function(port, host, config) {
       });
   };
 
-  var readFromServerAndCache = function(req, res) {
+  var readFromServerAndCache = function(req, requestBody) {
     var context = host + req.url;
     var deferred = Q.defer();
     console.log("Making request to " + context);
-    var x = request(context, {}, saveResponseToCache);
-    req.pipe(x);
-    x.pipe(res);
+    var params = {
+      method: req.method,
+      uri: context,
+      headers: _.assign(req.headers, {host: host.split('://')[1]}),
+      body: requestBody
+    };
+    debugger;
+    var backendReq = request(params, function(err, response, body) {
+      debugger;
+      console.log(body);
+      if(err) {
+        return deferred.reject(err);
+      }
+      return deferred.resolve(response);
+    });
     return deferred.promise;
   };
 
@@ -75,21 +86,38 @@ var proxy  = function(port, host, config) {
         return (isValidFile) ? FS.read(cacheEntryName, "b") : Q.reject(fileName);
       });
   };
+  
+  var readRequestBody = function(req) {
+    var deferred = Q.defer();
+    var rawData = "";
+    req.on('data', function(data) {
+      rawData += data;
+    });
+    req.on('end', function() {
+      deferred.resolve(rawData);      
+    });
+    return deferred.promise;
+  };
 
   var proxyRequest = function(req, res){
     var context = req.url;
     var fileFromCache = appConfig.responseDirectory + context;
-    return fetchFileFromCache(fileFromCache)
-      .then(function(responseBody) {
-        console.log("Cache Hit");
-        if(fileFromCache.indexOf("json") !== -1) {
-          res.setHeader('Content-Type', 'application/json');
-        }
-        return res.end(responseBody);
+    return readRequestBody(req)
+      .then(function(requestData) {
+        console.log("requestData" + requestData);
+        return readFromServerAndCache(req, requestData);
+        return fetchFileFromCache(fileFromCache, requestData)  
       })
-      .fail(function() {
-        console.log("Cache miss. Sending request");
-        return readFromServerAndCache(req, res);
+      .then(function(response) {
+        _.each(_.keys(response.headers), function(key) {
+          console.log(key + " " + response.headers[key]);
+          res.setHeader(key, response.headers[key]);
+        });        
+        res.write(response.body);
+        return response.body;
+      })
+      .fin(function() {
+        return res.end();
       });
   };
 
@@ -99,6 +127,3 @@ var proxy  = function(port, host, config) {
   app.listen(port);
   console.log(_.template('Listening on port ${ port } for host ${ host }!!!', {port: port, host: host}));
 };
-
-proxy(3000, "https://si-services.delta.com");
-proxy(4000, "http://content.delta.com");
