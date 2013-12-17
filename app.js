@@ -6,84 +6,28 @@ var Q = require("q");
 var _ = require('lodash');
 
 var proxy  = function(port, host, config) {
+
   var appConfig = _.defaults(config || {}, {
-    responseDirectory: "/tmp/response"
+    responseDirectory: __dirname + "/response"
   });
 
-  var dirExists = function(path, directoryToCheck) {
-    var fullPath = path + "/" + directoryToCheck;
-    return FS.exists(fullPath)
-      .then(function(exists) {
-        if(!exists) return false;
-        return FS.isDirectory(fullPath);
-      }).then(function(isDirectory) {
-        return isDirectory ? fullPath : Q.reject(path);
-      });
-  };
 
-  var nonEmptyValues = function(arr) {
-    return _.filter(arr, function(element) {
-      return element && element !== "";
-    });
-  };
-  var saveResponseToCache = function(error, response, body) {
-    var path = _.initial(response.req.path.split('/'));
-    if(response.statusCode !== 200 || response.req.path.indexOf("login") !== -1) { return Q.reject(error); }
-    var availablePathPromise = _.reduce(_.reject(path, function(item) {
-      return item === "";
-    }), function(currentValue, dir) {
-      return currentValue.then(function(currentPath) {
-        return dirExists(currentPath, dir);
-      });
-    }, Q.resolve(appConfig.responseDirectory));
-
-    return availablePathPromise.fail(function(existingPath) {
-      console.log("in fail");
-      var absolutePathToBeCreated = "/" + nonEmptyValues((appConfig.responseDirectory + path.join("/")).split("/")).join("/");
-      var dirToBeCreated = nonEmptyValues(absolutePathToBeCreated.replace(existingPath, "").split("/"));
-      console.log("____________" + existingPath + '___________');
-      return FS.makeDirectory(existingPath + "/" + _.head(dirToBeCreated))
-        .then(function() {
-          return FS.makeTree(existingPath + "/" + dirToBeCreated.join('/'));
-        });
-    })
-      .then(function() {
-        return FS.write(appConfig.responseDirectory + response.req.path + "_response", body);
-      });
-  };
-
-  var readFromServerAndCache = function(req, requestBody) {
-    var context = host + req.url;
-    var deferred = Q.defer();
-    console.log("Making request to " + context);
-    var params = {
-      method: req.method,
-      uri: context,
-      headers: _.assign(req.headers, {host: host.split('://')[1]}),
-      body: requestBody
-    };
-    debugger;
-    var backendReq = request(params, function(err, response, body) {
-      debugger;
-      console.log(body);
-      if(err) {
-        return deferred.reject(err);
-      }
-      return deferred.resolve(response);
-    });
-    return deferred.promise;
-  };
-
-  var fetchFileFromCache = function(fileName) {
+  var fetchFileFromCache = function(fileName, requestBody) {
     var cacheEntryName = fileName + "_response";
 
     return FS.exists(cacheEntryName)
       .then(function(exists) {
-        if(!exists) return Q.reject(fileName);
+        if(!exists) return Q.reject(requestBody);
         return FS.isFile(cacheEntryName);
       })
       .then(function(isValidFile) {
-        return (isValidFile) ? FS.read(cacheEntryName, "b") : Q.reject(fileName);
+        return (isValidFile) ? FS.read(cacheEntryName, "b") : Q.reject(requestBody);
+      })
+      .then(function(fileContent) {
+        return {
+          body: fileContent,
+          headers: {'content-type': 'application/json; charset=UTF-8'}
+        };
       });
   };
   
@@ -99,25 +43,50 @@ var proxy  = function(port, host, config) {
     return deferred.promise;
   };
 
-  var proxyRequest = function(req, res){
-    var context = req.url;
-    var fileFromCache = appConfig.responseDirectory + context;
-    return readRequestBody(req)
-      .then(function(requestData) {
-        console.log("requestData" + requestData);
-        return readFromServerAndCache(req, requestData);
-        return fetchFileFromCache(fileFromCache, requestData)  
+  var respondToClient = function(response, res) {
+    _.each(_.keys(response.headers), function(key) {
+      res.setHeader(key, response.headers[key]);
+    });        
+    res.write(response.body);
+    res.end();
+    return response;    
+  };
+  
+  var cacheBackendResponse = function(response) {
+    debugger;
+    var path = _.initial(response.req.path.split('/')).join('/');
+    
+    if(response.statusCode !== 200 || response.req.path.indexOf("login") !== -1) { return Q.reject(); }
+    
+    return FS.makeTree(appConfig.responseDirectory + path)
+      .then(function() {
+        return FS.write(appConfig.responseDirectory + response.req.path + "_response", response.body);
       })
-      .then(function(response) {
-        _.each(_.keys(response.headers), function(key) {
-          console.log(key + " " + response.headers[key]);
-          res.setHeader(key, response.headers[key]);
-        });        
-        res.write(response.body);
-        return response.body;
-      })
+      .fail(console.erroe)
       .fin(function() {
-        return res.end();
+        return response;
+      });    
+  };
+
+  var proxyAndCache = function(req, requestData) {
+    return readFromServer(req, requestData)
+      .then(cacheBackendResponse)            
+  };
+  
+  var proxyRequest = function(req, res){
+    return readRequestBody(req)
+      .then(function(requestBody) {
+        return fetchFileFromCache(appConfig.responseDirectory + req.url, requestBody)
+      })
+      .fail(function(requestData) {
+        return proxyAndCache(req, requestData);
+      })
+      .then(function(backendResponse) {
+        return respondToClient(backendResponse, res);
+      })
+      .fail(function(err) {
+        console.error(err);
+        return res.send(500, JSON.stringify(err));
       });
   };
 
@@ -127,3 +96,6 @@ var proxy  = function(port, host, config) {
   app.listen(port);
   console.log(_.template('Listening on port ${ port } for host ${ host }!!!', {port: port, host: host}));
 };
+
+proxy(3000, "http://st-services.delta.com");
+proxy(4000, "http://content.delta.com");
