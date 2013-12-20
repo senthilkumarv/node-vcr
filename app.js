@@ -14,12 +14,6 @@ var proxy = function (port, host, config) {
     });
 
     var readFromServer = function (req, requestBody) {
-        console.log("******************");
-        console.log(req.headers);
-//        console.log("******************");
-//        console.log(_.assign(req.headers, {host: host.split('://')[1]}));
-
-
         var context = host + req.url;
         var deferred = Q.defer();
         var params = {
@@ -51,10 +45,6 @@ var proxy = function (port, host, config) {
     var fetchFileFromCache = function (filePath, requestBody) {
 
         var cacheEntryName = responseFilePath(filePath, requestBody);
-
-        console.log("------------------");
-        console.log(filePath);
-        console.log(cacheEntryName);
 
         return FS.exists(cacheEntryName)
             .then(function (exists) {
@@ -97,15 +87,6 @@ var proxy = function (port, host, config) {
         var deferred = Q.defer();
         var response = hash.response, requestBody = hash.requestBody;
 
-        console.log("in cacheBackendResponse");
-        console.log(response.req.path.indexOf("login"));
-        console.log(response.req.path.indexOf("login") !== -1);
-//        console.log(response);
-
-//        if (response.statusCode !== 200 || response.req.path.indexOf("login") !== -1) {
-//            return Q.reject();
-//        }
-
         var filePath = appConfig.responseDirectory + response.req.path;
 
         FS.makeTree(filePath + "/" + requestId(filePath, requestBody))
@@ -113,14 +94,9 @@ var proxy = function (port, host, config) {
                 if(response.req.path.indexOf("logout") !== -1)
                     return true;
                 if(response.req.path.indexOf("login") !== -1){
-                    console.log("$$$$$$$$$$$$$$$$$$$$$$$$$");
-//                    console.log(response);
-//                    console.log(response.headers['set-cookie'][0]);
-//                    console.log(response.headers['set-cookie'].count);
                     _.each(response.headers['set-cookie'],function(cookie){
                         loginCookies = loginCookies + " ; " + cookie.split(";")[0];
                     });
-                    console.log(loginCookies);
                     return true;
                 }
                 return FS.write(requestFilePath(filePath, requestBody), requestBody) && FS.write(responseFilePath(filePath, requestBody), response.body);
@@ -129,8 +105,6 @@ var proxy = function (port, host, config) {
                 return deferred.reject(console.error);
             })
             .fin(function () {
-                console.log("^^^^^^^^^^^^^^^^^^^");
-                console.log(response.headers);
                 return deferred.resolve(response);
             });
 
@@ -148,8 +122,6 @@ var proxy = function (port, host, config) {
                 return fetchFileFromCache(appConfig.responseDirectory + req.url, requestBody)
             })
             .fail(function (requestData) {
-//                console.log("in fail..............");
-//                console.log(req);
                 return proxyAndCache(req, requestData);
             })
             .then(function (backendResponse) {
