@@ -1,5 +1,8 @@
 .DS_Store
 Icon?
+.idea/
+dump.rdb
+node-vcr.iml
 
 # Thumbnails
 ._*
