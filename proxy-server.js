@@ -140,3 +140,6 @@ var proxy = function (port, host, config) {
     console.log(_.template('Listening on port ${ port } for host ${ host }!!!', {port: port, host: host}));
 };
 
+module.exports = {
+  proxy: proxy
+}
