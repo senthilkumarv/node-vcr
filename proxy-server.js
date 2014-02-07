@@ -5,7 +5,7 @@ var FS = require("q-io/fs");
 var Q = require("q");
 var _ = require('lodash');
 var crypto = require("crypto");
-var loginCookies = "";
+//var loginCookies = "";
 
 var proxy = function (port, host, config) {
 
@@ -19,7 +19,8 @@ var proxy = function (port, host, config) {
         var params = {
             method: req.method,
             uri: context,
-            headers: _.assign(req.headers, {host: host.split('://')[1], cookie: req.headers.cookie + loginCookies }),
+//            headers: _.assign(req.headers, {host: host.split('://')[1], cookie: req.headers.cookie + loginCookies }),
+            headers: _.assign(req.headers, {host: host.split('://')[1]}),
             body: requestBody
         };
 
@@ -91,14 +92,14 @@ var proxy = function (port, host, config) {
 
         FS.makeTree(filePath + "/" + requestId(filePath, requestBody))
             .then(function () {
-                if(response.req.path.indexOf("logout") !== -1)
-                    return true;
-                if(response.req.path.indexOf("login") !== -1){
-                    _.each(response.headers['set-cookie'],function(cookie){
-                        loginCookies = loginCookies + " ; " + cookie.split(";")[0];
-                    });
-                    return true;
-                }
+//                if(response.req.path.indexOf("logout") !== -1)
+//                    return true;
+//                if(response.req.path.indexOf("login") !== -1){
+//                    _.each(response.headers['set-cookie'],function(cookie){
+//                        loginCookies = loginCookies + " ; " + cookie.split(";")[0];
+//                    });
+//                    return true;
+//                }
                 return FS.write(requestFilePath(filePath, requestBody), requestBody) && FS.write(responseFilePath(filePath, requestBody), response.body);
             })
             .fail(function(){
