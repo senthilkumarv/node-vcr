@@ -25,6 +25,7 @@ var proxy = function (port, host, config) {
         };
 
         request(params, function (err, response, body) {
+	    console.log("Got response for " + context);
             return err ? deferred.reject(err) : deferred.resolve({'response': response, 'requestBody': requestBody});
         });
 
@@ -79,6 +80,7 @@ var proxy = function (port, host, config) {
         _.each(_.keys(response.headers), function (key) {
             res.setHeader(key, response.headers[key]);
         });
+	debugger;
         res.write(response.body);
         res.end();
         return response;
@@ -120,6 +122,7 @@ var proxy = function (port, host, config) {
     var proxyRequest = function (req, res) {
         return readRequestBody(req)
             .then(function (requestBody) {
+		console.log("Making call to " + req.url);
                 return fetchFileFromCache(appConfig.responseDirectory + req.url, requestBody)
             })
             .fail(function (requestData) {
